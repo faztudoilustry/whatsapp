@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>24ChatBot - Integração WhatsApp</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+        24ChatBot - Integração WhatsApp
+      </h1>
+    </header>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <!-- Painel de Conexão -->
+      <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Status da Conexão
+        </h2>
+        
+        <div id="connection-status" class="mb-4 p-3 bg-gray-700 rounded-md">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            Desconectado
+          </span>
+        </div>
+        
+        <div id="qr-container" class="flex justify-center mb-4 hidden">
+          <div class="bg-white p-4 rounded-lg">
+            <img id="qr-code" src="/placeholder.svg" alt="QR Code" class="w-64 h-64">
+          </div>
+        </div>
+        
+        <div id="device-info" class="mb-4 hidden">
+          <div class="bg-gray-700 p-3 rounded-md space-y-2">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Número:</span>
+              <span id="device-number" class="text-white">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Dispositivo:</span>
+              <span id="device-name" class="text-white">-</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="flex space-x-2">
+          <button id="connect-btn" class="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Conectar
+          </button>
+          <button id="disconnect-btn" class="flex-1 bg-transparent hover:bg-red-500 text-red-500 hover:text-white border border-red-500 hover:border-transparent font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled>
+            Desconectar
+          </button>
+        </div>
+      </div>
+      
+      <!-- Painel de Mensagens -->
+      <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          Enviar Mensagem
+        </h2>
+        
+        <form id="message-form" class="space-y-4">
+          <div>
+            <label class="block text-gray-400 text-sm font-bold mb-2" for="number">
+              Número (com código do país, ex: 5511999999999)
+            </label>
+            <input class="shadow appearance-none border rounded w-full py-2 px-3 bg-gray-700 border-gray-600 text-white leading-tight focus:outline-none focus:shadow-outline" id="number" type="text" placeholder="5511999999999">
+          </div>
+          
+          <div>
+            <label class="block text-gray-400 text-sm font-bold mb-2" for="message">
+              Mensagem
+            </label>
+            <textarea class="shadow appearance-none border rounded w-full py-2 px-3 bg-gray-700 border-gray-600 text-white leading-tight focus:outline-none focus:shadow-outline" id="message" rows="4" placeholder="Digite sua mensagem aqui..."></textarea>
+          </div>
+          
+          <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled>
+            Enviar Mensagem
+          </button>
+        </form>
+        
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold mb-2">Última Mensagem Recebida</h3>
+          <div id="last-message" class="p-3 bg-gray-700 rounded-md text-gray-400 text-sm">
+            Nenhuma mensagem recebida
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Logs -->
+    <div class="mt-8 bg-gray-800 rounded-lg shadow-lg p-6">
+      <h2 class="text-xl font-semibold mb-4 flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Logs do Sistema
+      </h2>
+      
+      <div id="logs" class="bg-gray-900 p-4 rounded-md h-40 overflow-y-auto font-mono text-xs">
+        <div class="text-gray-500">[Sistema] Aguardando conexão...</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Conectar ao Socket.io
+    const socket = io();
+    
+    // Elementos DOM
+    const connectBtn = document.getElementById('connect-btn');
+    const disconnectBtn = document.getElementById('disconnect-btn');
+    const connectionStatus = document.getElementById('connection-status');
+    const qrContainer = document.getElementById('qr-container');
+    const qrCode = document.getElementById('qr-code');
+    const deviceInfo = document.getElementById('device-info');
+    const deviceNumber = document.getElementById('device-number');
+    const deviceName = document.getElementById('device-name');
+    const messageForm = document.getElementById('message-form');
+    const numberInput = document.getElementById('number');
+    const messageInput = document.getElementById('message');
+    const lastMessage = document.getElementById('last-message');
+    const logs = document.getElementById('logs');
+    
+    // Atualizar status da conexão
+    function updateConnectionStatus(state) {
+      // Atualizar indicador de status
+      connectionStatus.innerHTML = '';
+      let statusBadge;
+      
+      switch(state.status) {
+        case 'connected':
+          statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            Conectado
+          </span>`;
+          break;
+        case 'connecting':
+          statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            Conectando...
+          </span>`;
+          break;
+        case 'authenticated':
+          statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            Autenticado
+          </span>`;
+          break;
+        default:
+          statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            Desconectado
+          </span>`;
+      }
+      
+      connectionStatus.innerHTML = statusBadge;
+      
+      // Atualizar QR Code
+      if (state.qr) {
+        qrCode.src = state.qr;
+        qrContainer.classList.remove('hidden');
+        addLog('QR Code gerado. Escaneie com seu WhatsApp para conectar.');
+      } else {
+        qrContainer.classList.add('hidden');
+      }
+      
+      // Atualizar informações do dispositivo
+      if (state.info) {
+        deviceNumber.textContent = state.info.number || '-';
+        deviceName.textContent = state.info.name || 'WhatsApp Web';
+        deviceInfo.classList.remove('hidden');
+      } else {
+        deviceInfo.classList.add('hidden');
+      }
+      
+      // Atualizar botões
+      if (state.status === 'connected' || state.status === 'authenticated') {
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        messageForm.querySelector('button[type="submit"]').disabled = false;
+      } else if (state.status === 'connecting') {
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        messageForm.querySelector('button[type="submit"]').disabled = true;
+      } else {
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        messageForm.querySelector('button[type="submit"]').disabled = true;
+      }
+    }
+    
+    // Adicionar log
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      let className = 'text-gray-400';
+      
+      switch(type) {
+        case 'success':
+          className = 'text-green-400';
+          break;
+        case 'error':
+          className = 'text-red-400';
+          break;
+        case 'warning':
+          className = 'text-yellow-400';
+          break;
+      }
+      
+      const logEntry = document.createElement('div');
+      logEntry.className = className;
+      logEntry.textContent = `[${timestamp}] ${message}`;
+      logs.appendChild(logEntry);
+      logs.scrollTop = logs.scrollHeight;
+    }
+    
+    // Atualizar última mensagem
+    function updateLastMessage(message) {
+      if (!message) return;
+      
+      const timestamp = new Date(message.timestamp).toLocaleTimeString();
+      lastMessage.innerHTML = `
+        <div class="text-xs text-gray-500 mb-1">De: ${message.from} às ${timestamp}</div>
+        <div class="text-white">${message.body}</div>
+      `;
+      
+      addLog(`Nova mensagem de ${message.from}: ${message.body}`, 'success');
+    }
+    
+    // Eventos Socket.io
+    socket.on('connection-update', (state) => {
+      updateConnectionStatus(state);
+      
+      if (state.status === 'connected') {
+        addLog('WhatsApp conectado com sucesso!', 'success');
+      } else if (state.status === 'connecting') {
+        addLog('Conectando ao WhatsApp...');
+      } else if (state.status === 'disconnected') {
+        addLog('WhatsApp desconectado.');
+      }
+    });
+    
+    socket.on('new-message', (message) => {
+      updateLastMessage(message);
+    });
+    
+    // Eventos de clique
+    connectBtn.addEventListener('click', async () => {
+      try {
+        addLog('Iniciando conexão...');
+        const response = await fetch('/api/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addLog(data.message);
+        } else {
+          addLog(data.message, 'warning');
+        }
+      } catch (err) {
+        addLog(`Erro ao conectar: ${err.message}`, 'error');
+      }
+    });
+    
+    disconnectBtn.addEventListener('click', async () => {
+      try {
+        addLog('Desconectando...');
+        const response = await fetch('/api/disconnect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addLog(data.message, 'success');
+        } else {
+          addLog(data.message, 'warning');
+        }
+      } catch (err) {
+        addLog(`Erro ao desconectar: ${err.message}`, 'error');
+      }
+    });
+    
+    // Envio de mensagem
+    messageForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const number = numberInput.value.trim();
+      const message = messageInput.value.trim();
+      
+      if (!number || !message) {
+        addLog('Número e mensagem são obrigatórios', 'warning');
+        return;
+      }
+      
+      try {
+        addLog(`Enviando mensagem para ${number}...`);
+        const response = await fetch('/api/send-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ number, message })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addLog(`Mensagem enviada com sucesso para ${number}`, 'success');
+          messageInput.value = '';
+        } else {
+          addLog(`Erro ao enviar mensagem: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        addLog(`Erro ao enviar mensagem: ${err.message}`, 'error');
+      }
+    });
+    
+    // Verificar status inicial
+    fetch('/api/status')
+      .then(response => response.json())
+      .then(state => {
+        updateConnectionStatus(state);
+        if (state.lastMessage) {
+          updateLastMessage(state.lastMessage);
+        }
+      })
+      .catch(err => {
+        addLog(`Erro ao obter status: ${err.message}`, 'error');
+      });
+  </script>
+</body>
+</html>
